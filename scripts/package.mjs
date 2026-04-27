@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { chmod, cp, mkdir, rm, writeFile } from "node:fs/promises";
+import { chmod, cp, mkdir, readdir, rm, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -11,18 +11,21 @@ const targetPlatform = process.env.TARGET_PLATFORM ?? process.platform;
 const targets = {
   win32: {
     adoptiumOs: "windows",
+    assetOs: "windows",
     archiveType: "zip",
     binary: "bin/java.exe",
     command: ".\\bin\\java.exe",
   },
   linux: {
     adoptiumOs: "linux",
+    assetOs: "linux",
     archiveType: "tar.gz",
     binary: "bin/java",
     command: "./bin/java",
   },
   darwin: {
     adoptiumOs: "mac",
+    assetOs: "mac",
     archiveType: "tar.gz",
     binary: "Contents/Home/bin/java",
     command: "./bin/java",
@@ -54,6 +57,36 @@ function featureVersion(version) {
   return Number(match[1]);
 }
 
+function exactTemurinAsset(target, version) {
+  const feature = featureVersion(version);
+  const normalizedVersion = version.replace("+", "_");
+  const extension = target.archiveType === "zip" ? "zip" : "tar.gz";
+  const assetName = `OpenJDK${feature}U-jre_x64_${target.assetOs}_hotspot_${normalizedVersion}.${extension}`;
+  const releaseTag = `jdk-${version}`;
+  return {
+    url: `https://github.com/adoptium/temurin${feature}-binaries/releases/download/${encodeURIComponent(releaseTag)}/${assetName}`,
+    name: assetName,
+    checksum: null,
+    releaseName: releaseTag,
+  };
+}
+
+async function assertExactAssetExists(asset) {
+  const response = await fetch(asset.url, {
+    method: "HEAD",
+    redirect: "follow",
+    headers: {
+      "user-agent": "service-lasso-lasso-java-packager",
+    },
+  });
+
+  if (!response.ok) {
+    throw new Error(`Failed to resolve exact Temurin asset ${asset.url}: ${response.status} ${response.statusText}`);
+  }
+
+  return asset;
+}
+
 async function fetchAdoptiumPackage(target, version) {
   const url = new URL(`https://api.adoptium.net/v3/assets/version/${encodeURIComponent(version)}`);
   url.searchParams.set("architecture", "x64");
@@ -63,33 +96,21 @@ async function fetchAdoptiumPackage(target, version) {
   url.searchParams.set("os", target.adoptiumOs);
   url.searchParams.set("vendor", "eclipse");
 
-  let response = await fetch(url, {
+  const response = await fetch(url, {
     headers: {
       "user-agent": "service-lasso-lasso-java-packager",
     },
   });
-  let releases = null;
 
   if (response.status === 404) {
-    const latestUrl = new URL(`https://api.adoptium.net/v3/assets/latest/${featureVersion(version)}/hotspot`);
-    latestUrl.searchParams.set("architecture", "x64");
-    latestUrl.searchParams.set("heap_size", "normal");
-    latestUrl.searchParams.set("image_type", "jre");
-    latestUrl.searchParams.set("jvm_impl", "hotspot");
-    latestUrl.searchParams.set("os", target.adoptiumOs);
-    latestUrl.searchParams.set("vendor", "eclipse");
-    response = await fetch(latestUrl, {
-      headers: {
-        "user-agent": "service-lasso-lasso-java-packager",
-      },
-    });
+    return await assertExactAssetExists(exactTemurinAsset(target, version));
   }
 
   if (!response.ok) {
     throw new Error(`Failed to resolve Adoptium metadata from ${url}: ${response.status} ${response.statusText}`);
   }
 
-  releases = await response.json();
+  const releases = await response.json();
   const releaseList = Array.isArray(releases) ? releases : [releases];
   const binary = releaseList
     .flatMap((release) => release.binaries ?? (release.binary ? [release.binary] : []))
@@ -153,11 +174,11 @@ async function compressPackage(packageRoot, outputPath, archiveType) {
 }
 
 async function findDistributionRoot(extractRoot, target) {
-  const candidates = [extractRoot, ...await import("node:fs/promises").then(({ readdir }) =>
-    readdir(extractRoot, { withFileTypes: true }).then((entries) =>
-      entries.filter((entry) => entry.isDirectory()).map((entry) => path.join(extractRoot, entry.name)),
-    ),
-  )];
+  const entries = await readdir(extractRoot, { withFileTypes: true });
+  const candidates = [
+    extractRoot,
+    ...entries.filter((entry) => entry.isDirectory()).map((entry) => path.join(extractRoot, entry.name)),
+  ];
 
   for (const candidate of candidates) {
     const binaryPath = path.join(candidate, target.binary);
@@ -234,6 +255,6 @@ export async function packageJava(platform = targetPlatform, version = javaVersi
   return outputPath;
 }
 
-if (import.meta.url === pathToFileURL(process.argv[1]).href) {
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   await packageJava();
 }
