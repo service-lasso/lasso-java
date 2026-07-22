@@ -82,3 +82,6 @@ The service manifest declares:
 - canonical `endpoints[]` metadata for the upstream Temurin URL
 - `JAVA` and `JAVA_HOME` provider/global environment hints
 - provider version proof using `java --version`
+- no `healthchecks[]` entries today because this provider is a release-backed runtime archive, not a long-running service daemon
+
+`npm test` guards the manifest contract and fails if `service.json` reintroduces legacy singular `healthcheck`, malformed `healthchecks[]`, duplicate check ids, or `tcphost` / `tcpport` aliases.

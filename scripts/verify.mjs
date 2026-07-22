@@ -12,6 +12,28 @@ const manifest = JSON.parse(await readFile(path.join(repoRoot, "service.json"), 
 if ("urls" in manifest) {
   throw new Error("service.json must use canonical endpoints[] instead of legacy urls[].");
 }
+if ("healthcheck" in manifest) {
+  throw new Error("service.json must use canonical healthchecks[] instead of legacy healthcheck.");
+}
+if ("healthchecks" in manifest) {
+  if (!Array.isArray(manifest.healthchecks)) {
+    throw new Error("service.json healthchecks must be an array.");
+  }
+
+  const ids = new Set();
+  for (const check of manifest.healthchecks) {
+    if (!check?.id || typeof check.id !== "string") {
+      throw new Error(`service.json healthcheck is missing a stable id: ${JSON.stringify(check)}`);
+    }
+    if (ids.has(check.id)) {
+      throw new Error(`service.json healthchecks must use unique ids; duplicate "${check.id}".`);
+    }
+    ids.add(check.id);
+    if ("tcphost" in check || "tcpport" in check) {
+      throw new Error(`service.json healthcheck "${check.id}" must not use tcphost/tcpport aliases.`);
+    }
+  }
+}
 const temurinEndpoint = manifest.endpoints?.find((endpoint) => endpoint.id === "temurin");
 if (
   !temurinEndpoint ||
