@@ -79,5 +79,6 @@ The service manifest declares:
 - provider role with no managed daemon start requirement
 - native archive acquisition from GitHub releases
 - Java `17.0.18+8` as the default runtime artifact
+- canonical `endpoints[]` metadata for the upstream Temurin URL
 - `JAVA` and `JAVA_HOME` provider/global environment hints
 - provider version proof using `java --version`

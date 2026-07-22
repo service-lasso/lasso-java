@@ -12,11 +12,13 @@
     "JAVA": "${SERVICE_ROOT}/bin/java",
     "JAVA_HOME": "${SERVICE_ROOT}"
   },
-  "urls": [
+  "endpoints": [
     {
-      "label": "temurin",
+      "id": "temurin",
+      "kind": "url",
+      "label": "Temurin",
       "url": "https://adoptium.net/temurin/",
-      "kind": "external"
+      "exposure": "public"
     }
   ],
   "artifact": {
