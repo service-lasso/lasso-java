@@ -8,6 +8,20 @@ const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), ".."
 const platform = process.env.TARGET_PLATFORM ?? process.platform;
 const version = process.env.JAVA_VERSION ?? "17.0.18+8";
 
+const manifest = JSON.parse(await readFile(path.join(repoRoot, "service.json"), "utf8"));
+if ("urls" in manifest) {
+  throw new Error("service.json must use canonical endpoints[] instead of legacy urls[].");
+}
+const temurinEndpoint = manifest.endpoints?.find((endpoint) => endpoint.id === "temurin");
+if (
+  !temurinEndpoint ||
+  temurinEndpoint.kind !== "url" ||
+  temurinEndpoint.url !== "https://adoptium.net/temurin/" ||
+  temurinEndpoint.exposure !== "public"
+) {
+  throw new Error(`Unexpected Temurin endpoint contract: ${JSON.stringify(temurinEndpoint)}`);
+}
+
 function run(command, args, options = {}) {
   return new Promise((resolve, reject) => {
     const child = spawn(command, args, {
